@@ -6,6 +6,10 @@ This wiki documents every system in detail, based directly on the mod's source c
 
 ## Pages
 
+### Start here
+- **[For Players](For-Players.md)** — what's in it for you: fast ways to make money, running a business well, claiming and defending land, and getting involved in government.
+- **[For Server Owners](For-Server-Owners.md)** — what this does for your server: retention, economic balance, decentralized moderation, anti-griefing, and what to watch as an admin.
+
 ### Core economy
 - **[Economy & Market](Economy-Market.md)** — player balances, the fluctuating item market, the Trader Block, the Auto-Seller, direct trading, and the offline mailbox.
 
