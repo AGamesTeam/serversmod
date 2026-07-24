@@ -7,6 +7,7 @@ import com.andruspro6446.servermod.business.BarrelPos;
 import com.andruspro6446.servermod.business.BarrelStock;
 import com.andruspro6446.servermod.business.Business;
 import com.andruspro6446.servermod.business.BusinessData;
+import com.andruspro6446.servermod.business.BusinessTypes;
 import com.andruspro6446.servermod.business.Order;
 import com.andruspro6446.servermod.business.QueuePos;
 import com.andruspro6446.servermod.business.SalesTax;
@@ -197,7 +198,7 @@ public final class CustomerNpcManager
             if (npc.getState() != CustomerNpc.State.TRAVELING && npc.getState() != CustomerNpc.State.WAITING)
                 continue;
 
-            Business business = data.getByOwner(npc.getBusinessOwnerId());
+            Business business = data.getByOwnerAndType(npc.getBusinessOwnerId(), BusinessTypes.SHOP_ID);
             if (business == null || data.isOpenNow(business))
                 continue;
 
@@ -381,7 +382,7 @@ public final class CustomerNpcManager
             if (waited < Config.customerServiceTimeoutTicks)
                 continue;
 
-            Business business = data.getByOwner(npc.getBusinessOwnerId());
+            Business business = data.getByOwnerAndType(npc.getBusinessOwnerId(), BusinessTypes.SHOP_ID);
             if (business != null)
             {
                 Review review = ReviewGenerator.generate(server, business, npc.getCustomerDisplayName(), ReviewGenerator.Outcome.TIMED_OUT,
@@ -473,7 +474,7 @@ public final class CustomerNpcManager
             UUID awareOf = npc.getAwareOfOwnerId();
             if (awareOf != null)
             {
-                Business known = data.getByOwner(awareOf);
+                Business known = data.getByOwnerAndType(awareOf, BusinessTypes.SHOP_ID);
                 if (known == null || !isEligibleForCustomers(server, data, known))
                 {
                     npc.setAwareOfOwnerId(null);
@@ -487,7 +488,7 @@ public final class CustomerNpcManager
             BusinessSignBlockEntity sign = findVisibleSign(level, npc, SIGN_SIGHT_RADIUS);
             if (sign == null || sign.getOwnerId() == null)
                 continue;
-            Business spotted = data.getByOwner(sign.getOwnerId());
+            Business spotted = data.getByOwnerAndType(sign.getOwnerId(), BusinessTypes.SHOP_ID);
             if (spotted == null || !isEligibleForCustomers(server, data, spotted))
                 continue;
 
@@ -752,7 +753,7 @@ public final class CustomerNpcManager
     {
         MinecraftServer server = level.getServer();
         BusinessData data = BusinessData.get(server);
-        Business business = data.getByOwner(npc.getBusinessOwnerId());
+        Business business = data.getByOwnerAndType(npc.getBusinessOwnerId(), BusinessTypes.SHOP_ID);
         if (business == null)
         {
             npc.leaveWithPoof();
@@ -945,7 +946,7 @@ public final class CustomerNpcManager
             if (npc.getState() != CustomerNpc.State.WAITING || !npc.isFrontOfLine())
                 continue;
 
-            Business business = data.getByOwner(npc.getBusinessOwnerId());
+            Business business = data.getByOwnerAndType(npc.getBusinessOwnerId(), BusinessTypes.SHOP_ID);
             if (business == null || !business.employeeHired)
                 continue;
 
@@ -983,7 +984,7 @@ public final class CustomerNpcManager
     {
         if (npc.getBusinessOwnerId() == null || !npc.getBusinessOwnerId().equals(player.getUUID()))
             return null;
-        return data.getByOwner(npc.getBusinessOwnerId());
+        return data.getByOwnerAndType(npc.getBusinessOwnerId(), BusinessTypes.SHOP_ID);
     }
 
     // ---------- lookups ----------

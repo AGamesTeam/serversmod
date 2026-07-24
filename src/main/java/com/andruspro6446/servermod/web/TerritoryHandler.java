@@ -3,6 +3,7 @@ package com.andruspro6446.servermod.web;
 import com.andruspro6446.servermod.ServerMod;
 import com.andruspro6446.servermod.business.Business;
 import com.andruspro6446.servermod.business.BusinessData;
+import com.andruspro6446.servermod.business.BusinessTypes;
 import com.andruspro6446.servermod.money.Money;
 import com.andruspro6446.servermod.money.MoneyData;
 import com.andruspro6446.servermod.territory.BillingStatus;
@@ -910,7 +911,7 @@ public class TerritoryHandler
     private Business requireBusiness(String ownerName)
     {
         GameProfile profile = resolveTarget(ownerName);
-        Business business = BusinessData.get(server).getByOwner(profile.getId());
+        Business business = BusinessData.get(server).getByOwnerAndType(profile.getId(), BusinessTypes.SHOP_ID);
         if (business == null)
             throw new WebActionException(profile.getName() + " doesn't have a business.");
         return business;

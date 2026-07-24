@@ -2,6 +2,7 @@ package com.andruspro6446.servermod.command;
 
 import com.andruspro6446.servermod.business.Business;
 import com.andruspro6446.servermod.business.BusinessData;
+import com.andruspro6446.servermod.business.BusinessTypes;
 import com.andruspro6446.servermod.business.MissedPaymentPolicy;
 import com.andruspro6446.servermod.business.QueuePos;
 import com.andruspro6446.servermod.customer.CustomerNpcManager;
@@ -123,7 +124,7 @@ public final class ModCommands
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         MinecraftServer server = ctx.getSource().getServer();
         BusinessData data = BusinessData.get(server);
-        Business business = data.getByOwner(player.getUUID());
+        Business business = data.getByOwnerAndType(player.getUUID(), BusinessTypes.SHOP_ID);
         if (business == null)
         {
             ctx.getSource().sendFailure(Component.literal("You don't have a business.").withStyle(ChatFormatting.RED));
@@ -143,7 +144,7 @@ public final class ModCommands
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         MinecraftServer server = ctx.getSource().getServer();
         BusinessData data = BusinessData.get(server);
-        Business business = data.getByOwner(player.getUUID());
+        Business business = data.getByOwnerAndType(player.getUUID(), BusinessTypes.SHOP_ID);
         if (business == null)
         {
             ctx.getSource().sendFailure(Component.literal("You don't have a business.").withStyle(ChatFormatting.RED));

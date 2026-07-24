@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,17 +74,54 @@ public class BusinessHandler
         // renders, risking anything from a stale read to a ConcurrentModificationException mid-iteration.
         String body = MainThreadExecutor.run(server, () -> {
             BusinessData data = BusinessData.get(server);
-            Business business = data.getByOwner(session.playerId);
-            return business == null ? registerFormHtml(data, msgHtml) : dashboardHtml(data, business, msgHtml);
+            List<Business> mine = data.getAllByOwner(session.playerId);
+            Business shop = mine.stream().filter(b -> b.type.equals(BusinessTypes.SHOP_ID)).findFirst().orElse(null);
+            Set<ResourceLocation> ownedTypes = new LinkedHashSet<>();
+            for (Business business : mine)
+                ownedTypes.add(business.type);
+
+            // The rich dashboard below (fund/withdraw/buy/sell/manufacture/hours/upgrades/...) only exists
+            // for a Shop - a business of any other type is just listed (see otherBusinessesHtml) and managed
+            // through whatever UI/commands that type's own addon provides.
+            StringBuilder sb = new StringBuilder();
+            if (shop != null)
+            {
+                sb.append(dashboardHtml(data, shop, msgHtml));
+                sb.append(otherBusinessesHtml(mine, shop));
+                sb.append(registerCardHtml(data, ownedTypes));
+            }
+            else
+            {
+                sb.append(registerFormHtml(data, ownedTypes, msgHtml));
+                sb.append(otherBusinessesHtml(mine, null));
+            }
+            return sb.toString();
         });
         WebSupport.sendHtml(exchange, 200, Html.page("ServerMod Panel - My Business", body));
     }
 
-    private String registerFormHtml(BusinessData data, String msgHtml)
+    // Full-page variant (topbar + message banner + the register card) - used when the caller has no Shop
+    // business, so there's no dashboard for a topbar to sit above already.
+    private String registerFormHtml(BusinessData data, Set<ResourceLocation> ownedTypes, String msgHtml)
     {
         return """
                 <div class="topbar"><h1>My Business</h1><div class="topbar-links"><a href="/businesses">Businesses</a><a href="/user">Back to panel</a></div></div>
                 %s
+                %s
+                """.formatted(msgHtml, registerCardHtml(data, ownedTypes));
+    }
+
+    // Bare "register a business" card, no topbar/banner of its own - blank once every registered BusinessType
+    // is already owned (nothing left to register). Appended below the Shop dashboard when it exists, or
+    // wrapped with a topbar by registerFormHtml when it doesn't.
+    private String registerCardHtml(BusinessData data, Set<ResourceLocation> ownedTypes)
+    {
+        Collection<BusinessType> available = BusinessTypeRegistry.all().stream()
+                .filter(type -> !ownedTypes.contains(type.id())).toList();
+        if (available.isEmpty())
+            return "";
+
+        return """
                 <div class="card">
                     <h2>&#127970; Register a business</h2>
                     <p class="sub">Registration costs %s once, plus %s every week after that (more if you run Sell Barrels -
@@ -97,26 +135,51 @@ public class BusinessHandler
                         <input type="submit" value="Register (%s)">
                     </form>
                 </div>
-                """.formatted(msgHtml, Money.format(data.registrationFeeCents()), Money.format(data.weeklyFeeCents()),
-                businessTypeSelectHtml(), Money.format(data.registrationFeeCents()));
+                """.formatted(Money.format(data.registrationFeeCents()), Money.format(data.weeklyFeeCents()),
+                businessTypeFieldHtml(available), Money.format(data.registrationFeeCents()));
     }
 
-    // Only rendered as a dropdown when an addon has actually registered a second type - a vanilla install (no
-    // addons) sees the exact same one-field form it always has, nothing to choose. See
-    // com.andruspro6446.servermod.api.BusinessTypeRegistry.
-    private String businessTypeSelectHtml()
+    // A dropdown once there's an actual choice to make; otherwise a hidden field carrying whichever single
+    // type is still available, so the form still submits the right type without showing UI for a choice that
+    // isn't one - this is also what keeps a vanilla install (only Shop ever available) looking exactly like
+    // the plain one-field form it always was. See com.andruspro6446.servermod.api.BusinessTypeRegistry.
+    private String businessTypeFieldHtml(Collection<BusinessType> available)
     {
-        Collection<BusinessType> types = BusinessTypeRegistry.all();
-        if (types.size() <= 1)
-            return "";
+        if (available.size() == 1)
+        {
+            BusinessType only = available.iterator().next();
+            return "<input type=\"hidden\" name=\"type\" value=\"%s\">".formatted(Html.escape(only.id().toString()));
+        }
 
         StringBuilder options = new StringBuilder();
-        for (BusinessType type : types)
+        for (BusinessType type : available)
             options.append("<option value=\"%s\">%s</option>".formatted(Html.escape(type.id().toString()), Html.escape(type.displayName())));
         return """
                 <label>Business type</label>
                 <select name="type">%s</select>
                 """.formatted(options);
+    }
+
+    // Lists whichever of the caller's businesses isn't the Shop shown above (or all of them, if they have no
+    // Shop at all) - blank if there's nothing besides the Shop dashboard already shown.
+    private String otherBusinessesHtml(List<Business> mine, Business shop)
+    {
+        List<Business> others = mine.stream().filter(b -> shop == null || !b.id.equals(shop.id)).toList();
+        if (others.isEmpty())
+            return "";
+
+        StringBuilder rows = new StringBuilder();
+        for (Business business : others)
+            rows.append("<tr><td>%s</td><td>%s</td></tr>".formatted(
+                    Html.escape(business.name), Html.escape(BusinessTypeRegistry.getOrShop(business.type).displayName())));
+
+        return """
+                <div class="card">
+                    <h2>Your other businesses</h2>
+                    <table><thead><tr><th>Name</th><th>Type</th></tr></thead><tbody>%s</tbody></table>
+                    <p class="hint">Managed through that business type's own commands/UI, not this dashboard.</p>
+                </div>
+                """.formatted(rows);
     }
 
     // Blank for a plain Shop (the common case, and the only case on a server with no addons installed) -
@@ -576,8 +639,8 @@ public class BusinessHandler
     private String doRegister(UUID playerId, String name, ResourceLocation typeId)
     {
         BusinessData data = BusinessData.get(server);
-        if (data.getByOwner(playerId) != null)
-            throw new WebActionException("You already have a business.");
+        if (data.getByOwnerAndType(playerId, typeId) != null)
+            throw new WebActionException("You already have a " + BusinessTypeRegistry.getOrShop(typeId).displayName() + " business.");
 
         int fee = data.registrationFeeCents();
         int balance = MoneyData.get(server).getMoney(playerId);
@@ -626,11 +689,14 @@ public class BusinessHandler
         }
     }
 
+    // Every action this dashboard exposes (fund, withdraw, buy, sell, manufacture, hours, upgrades, ...) is
+    // Shop-specific - this always resolves the caller's Shop business, not just any business they happen to
+    // own, now that a player can also own e.g. a Shipping business alongside it.
     private Business requireOwnBusiness(UUID playerId)
     {
-        Business business = BusinessData.get(server).getByOwner(playerId);
+        Business business = BusinessData.get(server).getByOwnerAndType(playerId, BusinessTypes.SHOP_ID);
         if (business == null)
-            throw new WebActionException("You don't have a business yet.");
+            throw new WebActionException("You don't have a Shop business yet.");
         return business;
     }
 
@@ -1414,7 +1480,7 @@ public class BusinessHandler
 
     private StorefrontView buildStorefrontView(UUID viewerId, Role viewerRole, UUID ownerId, String msgHtml, Map<String, String> query)
     {
-        Business business = BusinessData.get(server).getByOwner(ownerId);
+        Business business = BusinessData.get(server).getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
         if (business == null || (!business.listed && !business.ownerId.equals(viewerId)))
             return null;
 
@@ -1629,7 +1695,7 @@ public class BusinessHandler
     private String doSubmitReview(UUID playerId, String playerName, UUID ownerId, UUID orderId, double stars, List<String> goodTags, List<String> badTags)
     {
         BusinessData data = BusinessData.get(server);
-        Business business = data.getByOwner(ownerId);
+        Business business = data.getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
         if (business == null)
             throw new WebActionException("That business isn't available.");
 
@@ -1670,7 +1736,7 @@ public class BusinessHandler
 
         boolean removed = MainThreadExecutor.run(server, () -> {
             BusinessData data = BusinessData.get(server);
-            Business business = data.getByOwner(ownerId);
+            Business business = data.getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
             return business != null && data.removeReview(business, reviewId);
         });
         WebSupport.redirectWithMessage(exchange, "/business/view?owner=" + ownerId, removed ? "Review deleted." : "That review wasn't found.", removed);
@@ -1713,7 +1779,7 @@ public class BusinessHandler
             throw new WebActionException("You can't buy from your own business.");
 
         BusinessData data = BusinessData.get(server);
-        Business business = data.getByOwner(ownerId);
+        Business business = data.getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
         if (business == null || !business.listed)
             throw new WebActionException("That business isn't available.");
         if (business.status == Business.Status.SUSPENDED)
@@ -1909,21 +1975,30 @@ public class BusinessHandler
 
         StringBuilder rows = new StringBuilder();
         for (Business business : all)
+        {
+            // The storefront view only ever resolves a caller's Shop business - it makes no sense (and
+            // wouldn't show the right one) for any other BusinessType, which has no storefront/reviews at all.
+            boolean isShop = business.type.equals(BusinessTypes.SHOP_ID);
+            String action = isShop
+                    ? "<a class=\"btn ghost\" href=\"/business/view?owner=%s\">View / moderate reviews</a>".formatted(business.ownerId)
+                    : "-";
             rows.append("""
                     <tr>
                         <td>%s</td>
                         <td>%s</td>
                         <td>%s</td>
                         <td>%s</td>
+                        <td>%s</td>
                         <td>%d</td>
-                        <td><a class="btn ghost" href="/business/view?owner=%s">View / moderate reviews</a></td>
+                        <td>%s</td>
                     </tr>
-                    """.formatted(Html.escape(business.name), statusBadgeHtml(business),
-                    Money.format(business.balanceCents), business.listed ? "Listed" : "Private",
-                    business.reviews.size(), business.ownerId));
+                    """.formatted(Html.escape(business.name), Html.escape(BusinessTypeRegistry.getOrShop(business.type).displayName()),
+                    statusBadgeHtml(business), Money.format(business.balanceCents), business.listed ? "Listed" : "Private",
+                    business.reviews.size(), action));
+        }
 
         String table = all.isEmpty() ? "<p class=\"sub\">No businesses registered yet.</p>"
-                : "<table><thead><tr><th>Name</th><th>Status</th><th>Balance</th><th>Storefront</th><th>Reviews</th><th></th></tr></thead><tbody>%s</tbody></table>".formatted(rows);
+                : "<table><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Balance</th><th>Storefront</th><th>Reviews</th><th></th></tr></thead><tbody>%s</tbody></table>".formatted(rows);
 
         return """
                 <div class="card">

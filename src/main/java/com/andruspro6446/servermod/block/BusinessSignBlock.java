@@ -2,6 +2,7 @@ package com.andruspro6446.servermod.block;
 
 import com.andruspro6446.servermod.business.Business;
 import com.andruspro6446.servermod.business.BusinessData;
+import com.andruspro6446.servermod.business.BusinessTypes;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -63,7 +64,7 @@ public class BusinessSignBlock extends Block implements EntityBlock
     // as-yet-unpositioned entity in one go (load() would reset position to the origin if Pos were omitted).
     private static void spawnNameDisplay(ServerLevel level, BlockPos pos, BusinessData data, UUID ownerId)
     {
-        Business business = data.getByOwner(ownerId);
+        Business business = data.getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
         if (business == null)
             return;
 
@@ -111,7 +112,7 @@ public class BusinessSignBlock extends Block implements EntityBlock
         }
 
         BusinessData data = BusinessData.get(serverLevel.getServer());
-        Business business = data.getByOwner(blockEntity.getOwnerId());
+        Business business = data.getByOwnerAndType(blockEntity.getOwnerId(), BusinessTypes.SHOP_ID);
         if (business == null)
         {
             player.displayClientMessage(Component.literal("This sign's business no longer exists.").withStyle(ChatFormatting.GRAY), true);

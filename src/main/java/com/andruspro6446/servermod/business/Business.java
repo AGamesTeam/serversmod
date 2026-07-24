@@ -20,6 +20,9 @@ public class Business
 {
     public enum Status { ACTIVE, GRACE, SUSPENDED }
 
+    // Distinct from ownerId - a player can own more than one business now (at most one of each BusinessType,
+    // see BusinessData.getByOwnerAndType), so ownerId alone no longer identifies a single business.
+    public final UUID id;
     public final UUID ownerId;
     public String name;
     // Which BusinessType this is (see api.BusinessTypeRegistry) - defaults to the built-in Shop, kept as a
@@ -105,8 +108,9 @@ public class Business
     public UUID stateAffiliationGovernmentId = null;
     public int stateProfitSharePercent = 0;
 
-    public Business(UUID ownerId, String name, long nextBillingAtMillis)
+    public Business(UUID id, UUID ownerId, String name, long nextBillingAtMillis)
     {
+        this.id = id;
         this.ownerId = ownerId;
         this.name = name;
         this.nextBillingAtMillis = nextBillingAtMillis;

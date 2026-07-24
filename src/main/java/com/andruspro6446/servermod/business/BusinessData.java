@@ -36,6 +36,9 @@ public class BusinessData extends SavedData
     private static final String DATA_NAME = "servermod_business";
     public static final long BILLING_INTERVAL_MILLIS = 7L * 24 * 60 * 60 * 1000; // 7 real days, i.e. "weekly"
 
+    // Keyed by Business.id, not ownerId - a player can own more than one business (at most one of each
+    // BusinessType, see getByOwnerAndType). Everything below that used to assume "the" business for a given
+    // owner now goes through getByOwnerAndType instead of a raw map lookup.
     private final Map<UUID, Business> businesses = new LinkedHashMap<>();
     private final List<Recipe> recipes = new ArrayList<>();
 
@@ -159,10 +162,17 @@ public class BusinessData extends SavedData
         CompoundTag businessesTag = tag.getCompound("businesses");
         for (String key : businessesTag.getAllKeys())
         {
-            UUID ownerId = UUID.fromString(key);
             CompoundTag bTag = businessesTag.getCompound(key);
 
-            Business business = new Business(ownerId, bTag.getString("name"), bTag.getLong("nextBillingAtMillis"));
+            // Pre-multi-business saves keyed this map by owner id, with no id/ownerId fields inside the
+            // business's own tag (there was only ever one business per owner, so the map key doubled as
+            // both). Reusing that same UUID for both id and ownerId here keeps those saves loading correctly
+            // with no migration step needed.
+            UUID legacyKey = UUID.fromString(key);
+            UUID id = bTag.hasUUID("id") ? bTag.getUUID("id") : legacyKey;
+            UUID ownerId = bTag.hasUUID("ownerId") ? bTag.getUUID("ownerId") : legacyKey;
+
+            Business business = new Business(id, ownerId, bTag.getString("name"), bTag.getLong("nextBillingAtMillis"));
             if (bTag.contains("type"))
             {
                 ResourceLocation typeId = ResourceLocation.tryParse(bTag.getString("type"));
@@ -263,7 +273,7 @@ public class BusinessData extends SavedData
                 business.stateAffiliationGovernmentId = UUID.fromString(bTag.getString("stateAffiliationGovernmentId"));
             business.stateProfitSharePercent = bTag.getInt("stateProfitSharePercent");
 
-            data.businesses.put(ownerId, business);
+            data.businesses.put(id, business);
         }
 
         ListTag recipesTag = tag.getList("recipes", Tag.TAG_COMPOUND);
@@ -473,8 +483,10 @@ public class BusinessData extends SavedData
         tag.putString("missedPaymentPolicy", missedPaymentPolicy.name());
 
         CompoundTag businessesTag = new CompoundTag();
-        businesses.forEach((ownerId, business) -> {
+        businesses.forEach((id, business) -> {
             CompoundTag bTag = new CompoundTag();
+            bTag.putUUID("id", business.id);
+            bTag.putUUID("ownerId", business.ownerId);
             bTag.putString("name", business.name);
             bTag.putString("type", business.type.toString());
             bTag.put("extraData", business.extraData.copy());
@@ -542,7 +554,7 @@ public class BusinessData extends SavedData
                 bTag.putString("stateAffiliationGovernmentId", business.stateAffiliationGovernmentId.toString());
             bTag.putInt("stateProfitSharePercent", business.stateProfitSharePercent);
 
-            businessesTag.put(ownerId.toString(), bTag);
+            businessesTag.put(id.toString(), bTag);
         });
         tag.put("businesses", businessesTag);
 
@@ -630,9 +642,30 @@ public class BusinessData extends SavedData
 
     // ---------- businesses ----------
 
-    public Business getByOwner(UUID ownerId)
+    public Business getById(UUID businessId)
     {
-        return businesses.get(ownerId);
+        return businesses.get(businessId);
+    }
+
+    public List<Business> getAllByOwner(UUID ownerId)
+    {
+        List<Business> result = new ArrayList<>();
+        for (Business business : businesses.values())
+            if (business.ownerId.equals(ownerId))
+                result.add(business);
+        return result;
+    }
+
+    // A player may own at most one business of any given type (enforced by register, below), so this is
+    // never ambiguous. Returns null if they don't have one of this type - including if an addon that used to
+    // provide `typeId` has since been uninstalled, since its businesses would still exist but nothing would
+    // ever match a type nobody registers anymore.
+    public Business getByOwnerAndType(UUID ownerId, ResourceLocation typeId)
+    {
+        for (Business business : businesses.values())
+            if (business.ownerId.equals(ownerId) && business.type.equals(typeId))
+                return business;
+        return null;
     }
 
     public List<Business> getAll()
@@ -646,12 +679,14 @@ public class BusinessData extends SavedData
     }
 
     // Registers a business of a specific type (see api.BusinessTypeRegistry) - used by addons that offer
-    // their own registration flow instead of the default Shop one.
+    // their own registration flow instead of the default Shop one. The caller is responsible for checking
+    // getByOwnerAndType(ownerId, typeId) is null first - this doesn't guard against duplicates itself, same
+    // as every other business mutator here.
     public Business register(UUID ownerId, String name, ResourceLocation typeId)
     {
-        Business business = new Business(ownerId, name, System.currentTimeMillis() + BILLING_INTERVAL_MILLIS);
+        Business business = new Business(UUID.randomUUID(), ownerId, name, System.currentTimeMillis() + BILLING_INTERVAL_MILLIS);
         business.type = typeId;
-        businesses.put(ownerId, business);
+        businesses.put(business.id, business);
         setDirty();
         BusinessTypeRegistry.getOrShop(typeId).onRegistered(business);
         return business;
@@ -735,9 +770,11 @@ public class BusinessData extends SavedData
         return false;
     }
 
+    // Business Signs are a Shop-only fixture, so this always resolves the placer's Shop business specifically
+    // - not whichever business they happen to have, now that a player can own more than one.
     public void markSignPlaced(UUID ownerId)
     {
-        Business business = businesses.get(ownerId);
+        Business business = getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
         if (business == null || business.hasSignPlaced)
             return;
         business.hasSignPlaced = true;
@@ -790,9 +827,11 @@ public class BusinessData extends SavedData
 
     // ---------- sell barrels ----------
 
+    // Sell Barrels are a Shop-only fixture - always the placer's Shop business, not whichever business they
+    // happen to have.
     public void registerBarrel(UUID ownerId, ResourceKey<Level> dimension, BlockPos pos)
     {
-        Business business = businesses.get(ownerId);
+        Business business = getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
         if (business == null)
             return;
         business.barrels.add(new BarrelPos(dimension, pos));
@@ -801,7 +840,7 @@ public class BusinessData extends SavedData
 
     public void unregisterBarrel(UUID ownerId, ResourceKey<Level> dimension, BlockPos pos)
     {
-        Business business = businesses.get(ownerId);
+        Business business = getByOwnerAndType(ownerId, BusinessTypes.SHOP_ID);
         if (business == null)
             return;
         if (business.barrels.remove(new BarrelPos(dimension, pos)))
@@ -1039,7 +1078,7 @@ public class BusinessData extends SavedData
 
             switch (missedPaymentPolicy)
             {
-                case DISSOLVE -> toDissolve.add(business.ownerId);
+                case DISSOLVE -> toDissolve.add(business.id);
                 case SUSPEND -> { business.status = Business.Status.SUSPENDED; setDirty(); }
                 case GRACE_THEN_SUSPEND -> {
                     if (business.status != Business.Status.GRACE)
@@ -1057,15 +1096,15 @@ public class BusinessData extends SavedData
             }
         }
 
-        for (UUID ownerId : toDissolve)
+        for (UUID businessId : toDissolve)
         {
-            Business business = businesses.get(ownerId);
+            Business business = businesses.get(businessId);
             if (business == null)
                 continue;
             BusinessTypeRegistry.getOrShop(business.type).onDissolved(business);
             if (business.balanceCents > 0)
-                MoneyData.get(server).addMoney(server, ownerId, business.balanceCents);
-            businesses.remove(ownerId);
+                MoneyData.get(server).addMoney(server, business.ownerId, business.balanceCents);
+            businesses.remove(businessId);
         }
         if (!toDissolve.isEmpty())
             setDirty();
