@@ -1,6 +1,7 @@
 package com.andruspro6446.servermod.business;
 
 import com.andruspro6446.servermod.review.Review;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
@@ -21,6 +22,14 @@ public class Business
 
     public final UUID ownerId;
     public String name;
+    // Which BusinessType this is (see api.BusinessTypeRegistry) - defaults to the built-in Shop, kept as a
+    // plain id (not a live BusinessType reference) so an addon can come and go across saves without this
+    // field ever pointing at unloaded code.
+    public ResourceLocation type = BusinessTypes.SHOP_ID;
+    // Freeform persistent storage for whichever BusinessType owns this business - the base mod never reads or
+    // writes into this itself, just saves/loads it as-is (see BusinessData). Lets an addon (e.g. Shipping)
+    // keep its own state - ports, ships, cargo, contracts - without the base mod needing to know its shape.
+    public final CompoundTag extraData = new CompoundTag();
     public int balanceCents;
     public Status status = Status.ACTIVE;
     public long nextBillingAtMillis;

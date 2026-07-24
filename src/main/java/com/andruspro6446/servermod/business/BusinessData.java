@@ -1,5 +1,6 @@
 package com.andruspro6446.servermod.business;
 
+import com.andruspro6446.servermod.api.BusinessTypeRegistry;
 import com.andruspro6446.servermod.money.MoneyData;
 import com.andruspro6446.servermod.review.Review;
 import com.andruspro6446.servermod.review.ReviewSource;
@@ -162,6 +163,15 @@ public class BusinessData extends SavedData
             CompoundTag bTag = businessesTag.getCompound(key);
 
             Business business = new Business(ownerId, bTag.getString("name"), bTag.getLong("nextBillingAtMillis"));
+            if (bTag.contains("type"))
+            {
+                ResourceLocation typeId = ResourceLocation.tryParse(bTag.getString("type"));
+                if (typeId != null)
+                    business.type = typeId;
+            }
+            CompoundTag savedExtraData = bTag.getCompound("extraData");
+            for (String extraKey : savedExtraData.getAllKeys())
+                business.extraData.put(extraKey, savedExtraData.get(extraKey));
             business.balanceCents = bTag.getInt("balanceCents");
             business.listed = bTag.getBoolean("listed");
             business.graceDeadlineMillis = bTag.getLong("graceDeadlineMillis");
@@ -466,6 +476,8 @@ public class BusinessData extends SavedData
         businesses.forEach((ownerId, business) -> {
             CompoundTag bTag = new CompoundTag();
             bTag.putString("name", business.name);
+            bTag.putString("type", business.type.toString());
+            bTag.put("extraData", business.extraData.copy());
             bTag.putInt("balanceCents", business.balanceCents);
             bTag.putString("status", business.status.name());
             bTag.putLong("nextBillingAtMillis", business.nextBillingAtMillis);
@@ -612,7 +624,8 @@ public class BusinessData extends SavedData
     {
         int signWeeklyCents = (int) Math.round(signFeeCentsPerMonth * 7.0 / 30.0);
         int employeeWeeklyCents = business.employeeHired ? employeeWageCentsPerWeek : 0;
-        return weeklyFeeCents + business.barrels.size() * sellBarrelDailyFeeCents * 7 + signWeeklyCents + employeeWeeklyCents;
+        int typeWeeklyCents = BusinessTypeRegistry.getOrShop(business.type).extraWeeklyFeeCents(business);
+        return weeklyFeeCents + business.barrels.size() * sellBarrelDailyFeeCents * 7 + signWeeklyCents + employeeWeeklyCents + typeWeeklyCents;
     }
 
     // ---------- businesses ----------
@@ -629,9 +642,18 @@ public class BusinessData extends SavedData
 
     public Business register(UUID ownerId, String name)
     {
+        return register(ownerId, name, BusinessTypes.SHOP_ID);
+    }
+
+    // Registers a business of a specific type (see api.BusinessTypeRegistry) - used by addons that offer
+    // their own registration flow instead of the default Shop one.
+    public Business register(UUID ownerId, String name, ResourceLocation typeId)
+    {
         Business business = new Business(ownerId, name, System.currentTimeMillis() + BILLING_INTERVAL_MILLIS);
+        business.type = typeId;
         businesses.put(ownerId, business);
         setDirty();
+        BusinessTypeRegistry.getOrShop(typeId).onRegistered(business);
         return business;
     }
 
@@ -1040,6 +1062,7 @@ public class BusinessData extends SavedData
             Business business = businesses.get(ownerId);
             if (business == null)
                 continue;
+            BusinessTypeRegistry.getOrShop(business.type).onDissolved(business);
             if (business.balanceCents > 0)
                 MoneyData.get(server).addMoney(server, ownerId, business.balanceCents);
             businesses.remove(ownerId);
