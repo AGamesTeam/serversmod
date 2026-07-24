@@ -1,4 +1,4 @@
-N# Laws, Jail & Diplomacy
+# Laws, Jail & Diplomacy
 
 Countries can legislate, jail lawbreakers, and wage economic diplomacy against each other; any land claim owner can report a specific rule violation to their local government for review. This page covers all of it.
 
