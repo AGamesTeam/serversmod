@@ -7,6 +7,7 @@ This wiki documents every system in detail, based directly on the mod's source c
 ## Pages
 
 ### Start here
+- **[Server Setup](Server-Setup.md)** — installation, first-boot checklist, and the systems that are off/empty by default until an admin configures them.
 - **[For Players](For-Players.md)** — what's in it for you: fast ways to make money, running a business well, claiming and defending land, and getting involved in government.
 - **[For Server Owners](For-Server-Owners.md)** — what this does for your server: retention, economic balance, decentralized moderation, anti-griefing, and what to watch as an admin.
 
