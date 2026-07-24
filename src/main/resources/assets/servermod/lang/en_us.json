@@ -1,0 +1,10 @@
+{
+  "block.servermod.trader_block": "Trader Block",
+  "block.servermod.auto_seller": "Auto-Seller",
+  "block.servermod.sell_barrel": "Sell Barrel",
+  "container.servermod.sell_barrel": "Sell Barrel",
+  "item.servermod.land_claim_shovel": "Land Claim Shovel",
+  "item.servermod.city_claim_shovel": "City Claim Shovel",
+  "item.servermod.country_claim_shovel": "Country Claim Shovel",
+  "itemGroup.servermod.example_tab": "Server Mod"
+}
