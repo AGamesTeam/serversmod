@@ -1,9 +1,12 @@
 package com.andruspro6446.servermod.web;
 
 import com.andruspro6446.servermod.ServerMod;
+import com.andruspro6446.servermod.api.BusinessTypeRegistry;
 import com.andruspro6446.servermod.business.BarrelStock;
 import com.andruspro6446.servermod.business.Business;
 import com.andruspro6446.servermod.business.BusinessData;
+import com.andruspro6446.servermod.business.BusinessType;
+import com.andruspro6446.servermod.business.BusinessTypes;
 import com.andruspro6446.servermod.business.MissedPaymentPolicy;
 import com.andruspro6446.servermod.business.Order;
 import com.andruspro6446.servermod.business.PendingOrderReview;
@@ -30,6 +33,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -89,11 +93,41 @@ public class BusinessHandler
                     <form method="post" action="/user/business/register">
                         <label>Business name</label>
                         <input type="text" name="name" maxlength="32" required>
+                        %s
                         <input type="submit" value="Register (%s)">
                     </form>
                 </div>
                 """.formatted(msgHtml, Money.format(data.registrationFeeCents()), Money.format(data.weeklyFeeCents()),
-                Money.format(data.registrationFeeCents()));
+                businessTypeSelectHtml(), Money.format(data.registrationFeeCents()));
+    }
+
+    // Only rendered as a dropdown when an addon has actually registered a second type - a vanilla install (no
+    // addons) sees the exact same one-field form it always has, nothing to choose. See
+    // com.andruspro6446.servermod.api.BusinessTypeRegistry.
+    private String businessTypeSelectHtml()
+    {
+        Collection<BusinessType> types = BusinessTypeRegistry.all();
+        if (types.size() <= 1)
+            return "";
+
+        StringBuilder options = new StringBuilder();
+        for (BusinessType type : types)
+            options.append("<option value=\"%s\">%s</option>".formatted(Html.escape(type.id().toString()), Html.escape(type.displayName())));
+        return """
+                <label>Business type</label>
+                <select name="type">%s</select>
+                """.formatted(options);
+    }
+
+    // Blank for a plain Shop (the common case, and the only case on a server with no addons installed) -
+    // only businesses of an addon-registered type get a visible tag, so a vanilla dashboard looks exactly as
+    // it always has.
+    private String businessTypeBadgeHtml(Business business)
+    {
+        if (business.type.equals(BusinessTypes.SHOP_ID))
+            return "";
+        BusinessType type = BusinessTypeRegistry.getOrShop(business.type);
+        return " <span class=\"badge flat\">%s</span>".formatted(Html.escape(type.displayName()));
     }
 
     private String dashboardHtml(BusinessData data, Business business, String msgHtml)
@@ -152,7 +186,7 @@ public class BusinessHandler
         String upgradesCard = upgradesCardHtml(data, business);
 
         return """
-                <div class="topbar"><h1>%s</h1><div class="topbar-links"><a href="/businesses">Businesses</a><a href="/business/view?owner=%s">Preview storefront</a><a href="/user">Back to panel</a></div></div>
+                <div class="topbar"><h1>%s%s</h1><div class="topbar-links"><a href="/businesses">Businesses</a><a href="/business/view?owner=%s">Preview storefront</a><a href="/user">Back to panel</a></div></div>
                 %s
                 <div class="card">
                     <p class="sub">Status</p>
@@ -199,7 +233,7 @@ public class BusinessHandler
                 %s
                 %s
                 <script>ServerModUI.initItemPicker(document.getElementById('biz-buy-item'), '/user/market.json');</script>
-                """.formatted(Html.escape(business.name), business.ownerId, msgHtml, statusHtml, Money.format(business.balanceCents),
+                """.formatted(Html.escape(business.name), businessTypeBadgeHtml(business), business.ownerId, msgHtml, statusHtml, Money.format(business.balanceCents),
                 billingNote, reactivateHtml, disabledAttr, disabledAttr, manufactureCard, inventoryTable, storefrontCard, hoursCard,
                 ordersCard, upgradesCard);
     }
@@ -524,7 +558,13 @@ public class BusinessHandler
             if (name.isEmpty())
                 throw new WebActionException("Enter a business name.");
 
-            String message = MainThreadExecutor.run(server, () -> doRegister(session.playerId, name));
+            // Falls back to Shop for a vanilla form post (no "type" field at all) or an unrecognized id -
+            // never lets a malformed/stale request through as some half-registered type.
+            ResourceLocation requestedType = ResourceLocation.tryParse(form.getOrDefault("type", ""));
+            ResourceLocation typeId = requestedType != null && BusinessTypeRegistry.get(requestedType) != null
+                    ? requestedType : BusinessTypes.SHOP_ID;
+
+            String message = MainThreadExecutor.run(server, () -> doRegister(session.playerId, name, typeId));
             WebSupport.redirectWithMessage(exchange, "/user/business", message, true);
         }
         catch (WebActionException e)
@@ -533,7 +573,7 @@ public class BusinessHandler
         }
     }
 
-    private String doRegister(UUID playerId, String name)
+    private String doRegister(UUID playerId, String name, ResourceLocation typeId)
     {
         BusinessData data = BusinessData.get(server);
         if (data.getByOwner(playerId) != null)
@@ -545,7 +585,7 @@ public class BusinessHandler
             throw new WebActionException("You need " + Money.format(fee) + " but only have " + Money.format(balance) + ".");
 
         MoneyData.get(server).addMoney(server, playerId, -fee);
-        data.register(playerId, name);
+        data.register(playerId, name, typeId);
 
         ResourceLocation signId = ForgeRegistries.ITEMS.getKey(ServerMod.BUSINESS_SIGN_BLOCK_ITEM.get());
         ServerPlayer online = server.getPlayerList().getPlayer(playerId);
