@@ -22,4 +22,11 @@ public interface BusinessType
     // Called right before a business is removed (dissolved for missed payment, or admin-deleted) - a chance
     // to clean up or refund type-specific state. The business is still fully intact at this point.
     default void onDissolved(Business business) {}
+
+    // Optional read-only HTML shown on this business's /user/business web dashboard (see
+    // web.BusinessHandler.otherBusinessesHtml) - e.g. the Shipping addon surfaces its ports/ships/contracts
+    // here. Returns "" (nothing shown) by default; the core mod never interprets what's returned, just
+    // splices it into the page as-is, so escape any business-controlled text yourself (see web.Html.escape -
+    // public, safe for an addon to call directly).
+    default String dashboardHtml(Business business) { return ""; }
 }

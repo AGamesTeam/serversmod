@@ -169,17 +169,23 @@ public class BusinessHandler
             return "";
 
         StringBuilder rows = new StringBuilder();
+        StringBuilder typeCards = new StringBuilder();
         for (Business business : others)
-            rows.append("<tr><td>%s</td><td>%s</td></tr>".formatted(
-                    Html.escape(business.name), Html.escape(BusinessTypeRegistry.getOrShop(business.type).displayName())));
+        {
+            BusinessType type = BusinessTypeRegistry.getOrShop(business.type);
+            rows.append("<tr><td>%s</td><td>%s</td></tr>".formatted(Html.escape(business.name), Html.escape(type.displayName())));
+            String extra = type.dashboardHtml(business);
+            if (extra != null && !extra.isBlank())
+                typeCards.append(extra);
+        }
 
         return """
                 <div class="card">
                     <h2>Your other businesses</h2>
                     <table><thead><tr><th>Name</th><th>Type</th></tr></thead><tbody>%s</tbody></table>
-                    <p class="hint">Managed through that business type's own commands/UI, not this dashboard.</p>
                 </div>
-                """.formatted(rows);
+                %s
+                """.formatted(rows, typeCards);
     }
 
     // Blank for a plain Shop (the common case, and the only case on a server with no addons installed) -
