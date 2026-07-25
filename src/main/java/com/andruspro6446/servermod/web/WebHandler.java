@@ -114,6 +114,7 @@ public class WebHandler implements HttpHandler
         if (path.equals("/user/business/license") && method.equals("POST")) { business.handleBuyLicense(exchange); return; }
         if (path.equals("/user/business/review/reply") && method.equals("POST")) { business.handleReplyToReview(exchange); return; }
         if (path.equals("/user/business/claim-sign") && method.equals("POST")) { business.handleClaimSign(exchange); return; }
+        if (path.equals("/user/business/type-action") && method.equals("POST")) { business.handleTypeAction(exchange); return; }
         if (path.equals("/businesses") && method.equals("GET")) { business.renderDirectory(exchange); return; }
         if (path.equals("/leaderboard") && method.equals("GET")) { business.renderLeaderboard(exchange); return; }
         if (path.equals("/business/view") && method.equals("GET")) { business.renderStorefront(exchange); return; }

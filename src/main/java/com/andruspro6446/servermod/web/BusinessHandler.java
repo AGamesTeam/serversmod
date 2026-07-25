@@ -656,6 +656,11 @@ public class BusinessHandler
         MoneyData.get(server).addMoney(server, playerId, -fee);
         data.register(playerId, name, typeId);
 
+        // The Business Sign is a Shop storefront fixture - handing one to, say, a new Shipping business
+        // (which has no storefront) just confuses its owner about what they're supposed to do with it.
+        if (!typeId.equals(BusinessTypes.SHOP_ID))
+            return "Registered \"" + name + "\" for " + Money.format(fee) + ". Scroll down to manage it.";
+
         ResourceLocation signId = ForgeRegistries.ITEMS.getKey(ServerMod.BUSINESS_SIGN_BLOCK_ITEM.get());
         ServerPlayer online = server.getPlayerList().getPlayer(playerId);
         if (online != null)
@@ -664,6 +669,42 @@ public class BusinessHandler
             MailboxData.get(server).addPending(playerId, signId, 1);
 
         return "Registered \"" + name + "\" for " + Money.format(fee) + ". Check your inventory for a Business Sign to place at your storefront.";
+    }
+
+    // Generic dispatch for forms rendered by an addon BusinessType's own dashboardHtml (see
+    // BusinessType.handleDashboardAction): the hidden "type" field names the type, we resolve the caller's
+    // business of that type, and the type itself interprets the rest of the form. Keeps the core router
+    // ignorant of what actions any addon actually offers.
+    public void handleTypeAction(HttpExchange exchange) throws IOException
+    {
+        Session session = WebSupport.requireSession(exchange, Role.USER);
+        if (session == null)
+            return;
+
+        Map<String, String> form = WebSupport.parseForm(exchange);
+        try
+        {
+            ResourceLocation typeId = ResourceLocation.tryParse(form.getOrDefault("type", ""));
+            BusinessType type = typeId == null ? null : BusinessTypeRegistry.get(typeId);
+            if (type == null)
+                throw new WebActionException("Unknown business type.");
+
+            String message = MainThreadExecutor.run(server, () -> {
+                Business business = BusinessData.get(server).getByOwnerAndType(session.playerId, typeId);
+                if (business == null)
+                    throw new WebActionException("You don't have a " + type.displayName() + " business.");
+                String result = type.handleDashboardAction(server, business, form);
+                // The type just mutated its own state inside Business.extraData - the SavedData holding it
+                // has no way to notice that, so mark it dirty on the addon's behalf.
+                BusinessData.get(server).setDirty();
+                return result;
+            });
+            WebSupport.redirectWithMessage(exchange, "/user/business", message, true);
+        }
+        catch (WebActionException e)
+        {
+            WebSupport.redirectWithMessage(exchange, "/user/business", e.getMessage(), false);
+        }
     }
 
     public void handleFund(HttpExchange exchange) throws IOException

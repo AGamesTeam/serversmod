@@ -1,6 +1,9 @@
 package com.andruspro6446.servermod.business;
 
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+
+import java.util.Map;
 
 // A pluggable kind of business - see com.andruspro6446.servermod.api.BusinessTypeRegistry for how addons
 // register new ones. The built-in Shop type (see BusinessTypes.SHOP) covers everything the base mod already
@@ -29,4 +32,16 @@ public interface BusinessType
     // splices it into the page as-is, so escape any business-controlled text yourself (see web.Html.escape -
     // public, safe for an addon to call directly).
     default String dashboardHtml(Business business) { return ""; }
+
+    // Handles a form POSTed from this type's own dashboardHtml. Any form in that HTML should post to
+    // /user/business/type-action with a hidden "type" field carrying this type's id (that's how the router
+    // finds this handler - see web.BusinessHandler.handleTypeAction) plus whatever fields the action needs;
+    // this runs on the main server thread with the caller's own business of this type already resolved.
+    // Return a success message to flash on the dashboard, or throw web.WebActionException with a
+    // player-facing message to reject the action. The default rejects everything, so a type that renders no
+    // forms never has to think about this.
+    default String handleDashboardAction(MinecraftServer server, Business business, Map<String, String> form)
+    {
+        throw new com.andruspro6446.servermod.web.WebActionException("This business type has no web actions.");
+    }
 }
