@@ -2,6 +2,16 @@
 
 All notable changes to **ServerMod** will be documented in this file.
 
+## [0.1.1] - 2026-07-25
+
+### Businesses
+- Added a `BusinessType` extension API (`api.BusinessTypeRegistry`) so addons can register new kinds of business alongside the built-in Shop, with hooks for their own weekly upkeep and registration/dissolution logic.
+- Players can now own more than one business - up to one of each registered type (e.g. a Shop and an addon-provided type at once) - instead of being capped at a single business overall.
+- Added a business type selector to the `/user/business` web registration form, shown only once an addon has registered a second type; a vanilla install with no addons sees the exact same one-field form as before.
+- Added a "Your other businesses" card to the web dashboard listing any business besides your Shop, and a type badge next to the business name when it isn't Shop.
+- Added a generic web action route (`BusinessType.handleDashboardAction` + `BusinessType.dashboardHtml`) so an addon can render a real, interactive management panel for its business type on the same web dashboard, not just read-only info.
+- Registering a non-Shop business no longer hands you a Business Sign, since that's a Shop-only storefront fixture.
+
 ## [0.1.0-beta] - 2026-07-24
 
 Initial release. ServerMod adds a player-driven economy, businesses, and land/government simulation to a Minecraft Forge 1.20.1 server, backed by a web-based admin/user panel.

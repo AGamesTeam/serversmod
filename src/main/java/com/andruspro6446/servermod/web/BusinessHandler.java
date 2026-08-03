@@ -174,7 +174,7 @@ public class BusinessHandler
         {
             BusinessType type = BusinessTypeRegistry.getOrShop(business.type);
             rows.append("<tr><td>%s</td><td>%s</td></tr>".formatted(Html.escape(business.name), Html.escape(type.displayName())));
-            String extra = type.dashboardHtml(business);
+            String extra = type.dashboardHtml(server, business);
             if (extra != null && !extra.isBlank())
                 typeCards.append(extra);
         }

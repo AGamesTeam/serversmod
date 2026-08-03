@@ -30,8 +30,9 @@ public interface BusinessType
     // web.BusinessHandler.otherBusinessesHtml) - e.g. the Shipping addon surfaces its ports/ships/contracts
     // here. Returns "" (nothing shown) by default; the core mod never interprets what's returned, just
     // splices it into the page as-is, so escape any business-controlled text yourself (see web.Html.escape -
-    // public, safe for an addon to call directly).
-    default String dashboardHtml(Business business) { return ""; }
+    // public, safe for an addon to call directly). Takes the server so a type can render state that isn't
+    // stored on the business at all (e.g. Shipping's land-owned ports).
+    default String dashboardHtml(MinecraftServer server, Business business) { return ""; }
 
     // Handles a form POSTed from this type's own dashboardHtml. Any form in that HTML should post to
     // /user/business/type-action with a hidden "type" field carrying this type's id (that's how the router
